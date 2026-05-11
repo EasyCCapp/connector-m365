@@ -1,0 +1,115 @@
+# OSV-Scanner config — allowlisted advisories with justification + sunset.
+#
+# Every entry here represents a known advisory we've reviewed and determined
+# to be contextually mitigated. The catalog's manual-review tier re-validates
+# each entry's reasoning at every fork release.
+#
+# Format: https://google.github.io/osv-scanner/configuration/
+
+[[IgnoredVulns]]
+id = "GHSA-458j-xx4x-4375"  # hono CSRF
+reason = "hono is only loaded by the HTTP transport (--http). Catalog launch env enforces stdio-only; hono code path never executes in production. See connectors/m365/review/preliminary.md MCP04."
+ignoreUntil = "2026-08-11T00:00:00Z"
+
+[[IgnoredVulns]]
+id = "GHSA-9vqf-7f2p-gf9v"  # hono
+reason = "Same as above — HTTP-transport-only."
+ignoreUntil = "2026-08-11T00:00:00Z"
+
+[[IgnoredVulns]]
+id = "GHSA-69xw-7hcm-h432"  # hono JSX HTML injection
+reason = "Same — HTTP-transport-only."
+ignoreUntil = "2026-08-11T00:00:00Z"
+
+[[IgnoredVulns]]
+id = "GHSA-qp7p-654g-cw7p"  # hono CSS injection
+reason = "Same — HTTP-transport-only."
+ignoreUntil = "2026-08-11T00:00:00Z"
+
+[[IgnoredVulns]]
+id = "GHSA-hm8q-7f3q-5f36"  # hono JWT NumericDate
+reason = "Same — HTTP-transport-only."
+ignoreUntil = "2026-08-11T00:00:00Z"
+
+[[IgnoredVulns]]
+id = "GHSA-p77w-8qqv-26rm"  # hono cache cross-user leak
+reason = "Same — HTTP-transport-only."
+ignoreUntil = "2026-08-11T00:00:00Z"
+
+[[IgnoredVulns]]
+id = "GHSA-v2v4-37r5-5v8g"  # ip-address XSS (via express-rate-limit)
+reason = "express-rate-limit is only loaded by the HTTP transport (--http). Catalog launch env enforces stdio-only."
+ignoreUntil = "2026-08-11T00:00:00Z"
+
+[[IgnoredVulns]]
+id = "GHSA-q3j6-qgpj-74h6"  # fast-uri path traversal
+reason = "fast-uri is brought in by @modelcontextprotocol/sdk for URI parsing. Stdio-mode URI handling parses MCP resource URIs which are server-supplied (from upstream's hardcoded Graph API templates), not user-supplied. Manual reviewer to re-verify this code path before fork release."
+ignoreUntil = "2026-07-11T00:00:00Z"  # short sunset — wants verification
+
+[[IgnoredVulns]]
+id = "GHSA-v39h-62p7-jpjc"  # fast-uri host confusion
+reason = "Same as above. Manual reviewer to re-verify."
+ignoreUntil = "2026-07-11T00:00:00Z"
+
+# -----------------------------------------------------------------
+# Dev-dependency-only advisories — surfaced by OSV-Scanner because it
+# doesn't natively split prod/dev. These deps are NOT in the shipped
+# bundle (build.ps1 runs `npm prune --production` before zipping).
+# audit-ci handles this correctly via `--omit=dev`; OSV needs explicit
+# allowlist. Sunset matches upstream's expected fix timeline.
+# -----------------------------------------------------------------
+
+[[IgnoredVulns]]
+id = "GHSA-xq3m-2v4x-88gg"  # protobufjs arbitrary code execution (CRITICAL)
+reason = "Dev-only — via @redocly/cli → @opentelemetry/exporter-trace-otlp-http → @opentelemetry/otlp-transformer. Used at Softeria's build time for OpenAPI tooling. Not in the shipped bundle (npm prune --production drops it before zip). Verified via `npm audit --omit=dev` showing 0 critical."
+ignoreUntil = "2026-08-11T00:00:00Z"
+
+[[IgnoredVulns]]
+id = "GHSA-c2c7-rcm5-vvqj"  # picomatch ReDoS
+reason = "Dev-only — via tsup (TypeScript bundler). Not in shipped bundle."
+ignoreUntil = "2026-08-11T00:00:00Z"
+
+[[IgnoredVulns]]
+id = "GHSA-3v7f-55p6-f55p"  # picomatch DoS
+reason = "Dev-only — via tsup. Not in shipped bundle."
+ignoreUntil = "2026-08-11T00:00:00Z"
+
+[[IgnoredVulns]]
+id = "GHSA-qx2v-qp2m-jg93"  # postcss
+reason = "Dev-only — via build tooling. Not in shipped bundle."
+ignoreUntil = "2026-08-11T00:00:00Z"
+
+[[IgnoredVulns]]
+id = "GHSA-f886-m6hf-6m8v"  # brace-expansion DoS
+reason = "Dev-only — via build tooling. Not in shipped bundle."
+ignoreUntil = "2026-08-11T00:00:00Z"
+
+[[IgnoredVulns]]
+id = "GHSA-39q2-94rc-95cp"  # dompurify
+reason = "Dev-only — via @redocly/cli's docs preview. Not in shipped bundle."
+ignoreUntil = "2026-08-11T00:00:00Z"
+
+[[IgnoredVulns]]
+id = "GHSA-crv5-9vww-q3g8"  # dompurify
+reason = "Dev-only — via @redocly/cli. Not in shipped bundle."
+ignoreUntil = "2026-08-11T00:00:00Z"
+
+[[IgnoredVulns]]
+id = "GHSA-h7mw-gpvr-xq4m"  # dompurify
+reason = "Dev-only — via @redocly/cli. Not in shipped bundle."
+ignoreUntil = "2026-08-11T00:00:00Z"
+
+[[IgnoredVulns]]
+id = "GHSA-v9jr-rg53-9pgp"  # dompurify
+reason = "Dev-only — via @redocly/cli. Not in shipped bundle."
+ignoreUntil = "2026-08-11T00:00:00Z"
+
+[[IgnoredVulns]]
+id = "GHSA-5wm8-gmm8-39j9"  # fast-xml-builder
+reason = "Dev-only — via @redocly/cli. Not in shipped bundle."
+ignoreUntil = "2026-08-11T00:00:00Z"
+
+[[IgnoredVulns]]
+id = "GHSA-gh4j-gqv2-49f6"  # fast-xml-parser
+reason = "Dev-only — via @redocly/cli. Not in shipped bundle."
+ignoreUntil = "2026-08-11T00:00:00Z"
