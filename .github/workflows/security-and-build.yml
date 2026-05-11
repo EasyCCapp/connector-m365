@@ -1,0 +1,279 @@
+# Microsoft 365 MCP connector — security gates + build + release
+#
+# Customized from .github/connector-fork-ci-template.yml in the EasyCC
+# repo for Node.js / TypeScript. Differences from the AutoCAD CI:
+#   - npm/Node ecosystem (osv-scanner --lockfile=package-lock.json)
+#   - semgrep replaces Bandit for JS/TS SAST
+#   - npm audit --omit=dev for runtime-only dependency view
+#   - Build runs npm ci + npm run generate + npm run build
+
+name: Connector security and build
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  # Stage 1 — Dependency CVEs (OSV.dev, runtime-only)
+  osv-scan:
+    name: OSV — Dependency vulnerabilities (production only)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Install osv-scanner
+        run: |
+          curl -fsSL https://github.com/google/osv-scanner/releases/latest/download/osv-scanner_linux_amd64 -o /usr/local/bin/osv-scanner
+          chmod +x /usr/local/bin/osv-scanner
+      - name: Scan package-lock.json (production deps)
+        # OSV-Scanner doesn't natively split prod/dev. We accept that for
+        # the catalog gate and use the manual review tier (Endor via local
+        # MCP) for the prod-only deep dive. The blanket OSV view still
+        # catches things missing from manual review.
+        run: osv-scanner --lockfile=package-lock.json .
+
+  # Stage 1 — npm audit (production-only deps)
+  npm-audit-prod:
+    name: npm audit — production dependencies only
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm audit --audit-level=high --omit=dev
+
+  # Stage 2 — JS/TS SAST via semgrep (no account, OSS rules)
+  semgrep:
+    name: Semgrep — JS/TS SAST
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install semgrep
+      - name: Run semgrep
+        # Run in scan mode (no account). Exit nonzero on HIGH severity.
+        # Exclude test/build directories from the gate; we have separate
+        # context-review for build scripts.
+        run: |
+          semgrep scan \
+            --config p/javascript \
+            --config p/typescript \
+            --config p/security-audit \
+            --severity=ERROR \
+            --error \
+            --exclude=test \
+            --exclude=__tests__ \
+            --exclude=examples \
+            --exclude=bin
+
+  # Stage 2 — TruffleHog (secrets)
+  trufflehog:
+    name: TruffleHog secrets scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+      - uses: trufflesecurity/trufflehog@47e7b7cd74f578e1e3145d48f669f22fd1330ca6 # v3.94.3
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --only-verified
+
+  # Stage 3 — MCP-specific static analysis
+  mcp-scanner:
+    name: MCP-specific static scan (Cisco)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: pipx install git+https://github.com/cisco-ai-defense/mcp-scanner.git
+      - name: Build server (need dist/index.js to launch)
+        run: |
+          npm ci
+          npm run generate
+          npm run build
+      - name: Run scanner against running server (stdio mode)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          mcp-scanner \
+            --analyzers=yara \
+            --raw \
+            stdio \
+            --stdio-command=node \
+            --stdio-arg=dist/index.js \
+            > mcp-scan-results.json
+          # Gate on HIGH findings outside the catalog allowlist.
+          # The 5 allowed are documented in connectors/m365/connector.json
+          # _cisco_allowlist as false-positive 'CRITICAL:'/'💡 TIP:' markers.
+          python - <<'PY'
+          import json, sys
+          data = json.load(open("mcp-scan-results.json"))
+          ALLOWED = {
+              "create-onedrive-folder", "list-contact-folder-contacts",
+              "forward-calendar-event", "list-mail-folder-messages",
+              "list-mail-messages",
+          }
+          fails = []
+          for entry in data:
+              if entry.get("is_safe"):
+                  continue
+              name = entry.get("tool_name")
+              for analyzer, result in entry.get("findings", {}).items():
+                  if result.get("severity") == "HIGH" and name not in ALLOWED:
+                      fails.append((name, analyzer, result.get("threat_summary")))
+          if fails:
+              print(f"FAIL: {len(fails)} HIGH finding(s) outside allowlist:")
+              for f in fails:
+                  print(f"  - {f}")
+              sys.exit(1)
+          print("OK")
+          PY
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcp-scan-results
+          path: mcp-scan-results.json
+
+  unicode-norm:
+    name: Unicode normalization scan (Carpe)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run scanner (exclude auto-downloaded Microsoft Graph spec)
+        # The Microsoft Graph OpenAPI spec (auto-downloaded by Softeria's
+        # build pipeline) contains a single U+200B that's not in
+        # human-authored Softeria code. Exclude the openapi/ dir from the
+        # gate; it's regenerated at build time, not part of the tool surface.
+        run: |
+          python carpe-fork/tools/unicode-norm/scan.py \
+            --path=. \
+            --exclude-dir=node_modules \
+            --exclude-dir=dist \
+            --exclude-dir=openapi \
+            --fail-on-finding
+
+  # Stage 4 — Tool-surface snapshot (rug-pull mitigation)
+  tool-surface-snapshot:
+    name: Tool-surface snapshot (Carpe)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: |
+          npm ci
+          npm run generate
+          npm run build
+      - name: Snapshot tool surface (--org-mode)
+        run: |
+          python carpe-fork/tools/tool-surface-snapshot/snapshot.py \
+            --launch-cmd="node dist/index.js --org-mode" \
+            --output=tool-surface.json
+          sha256sum tool-surface.json | tee tool-surface.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tool-surface
+          path: |
+            tool-surface.json
+            tool-surface.sha256
+
+  lockfile-sanity:
+    name: Lockfile present and in sync with manifest
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: npm ci --dry-run
+        # Will fail if package-lock.json is out of sync with package.json
+        run: npm ci --dry-run
+
+  build:
+    name: Build win-x64
+    needs:
+      - osv-scan
+      - npm-audit-prod
+      - semgrep
+      - trufflehog
+      - mcp-scanner
+      - unicode-norm
+      - tool-surface-snapshot
+      - lockfile-sanity
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build connector zip
+        run: .\carpe-fork\build.ps1
+        shell: pwsh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: connector-win-x64
+          path: |
+            dist-release/m365-mcp-win-x64.zip
+            dist-release/m365-mcp-win-x64.zip.sha256
+
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release
+          find artifacts -type f -exec cp {} release/ \;
+          ls -la release/
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
