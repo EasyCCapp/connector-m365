@@ -203,7 +203,10 @@ def main() -> int:
         return 2
 
     canonical = json.dumps(snap, sort_keys=True, ensure_ascii=False, indent=2) + "\n"
-    args.output.write_text(canonical, encoding="utf-8")
+    # Write bytes, not text — Path.write_text on Windows translates \n to
+    # \r\n which breaks hash determinism across runner OSes. The rug-pull
+    # defense depends on byte-identical output.
+    args.output.write_bytes(canonical.encode("utf-8"))
 
     print(
         f"Captured {snap['tool_count']} tools from "
