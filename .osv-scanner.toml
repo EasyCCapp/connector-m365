@@ -78,3 +78,38 @@ ignoreUntil = "2026-08-11T00:00:00Z"
 id = "GHSA-qx2v-qp2m-jg93"  # postcss
 reason = "Dev-only — via build tooling. Not in shipped bundle."
 ignoreUntil = "2026-08-11T00:00:00Z"
+
+[[IgnoredVulns]]
+id = "GHSA-f886-m6hf-6m8v"  # brace-expansion DoS
+reason = "Dev-only — via build tooling. Not in shipped bundle."
+ignoreUntil = "2026-08-11T00:00:00Z"
+
+[[IgnoredVulns]]
+id = "GHSA-39q2-94rc-95cp"  # dompurify
+reason = "Dev-only — via @redocly/cli's docs preview. Not in shipped bundle."
+ignoreUntil = "2026-08-11T00:00:00Z"
+
+[[IgnoredVulns]]
+id = "GHSA-crv5-9vww-q3g8"  # dompurify
+reason = "Dev-only — via @redocly/cli. Not in shipped bundle."
+ignoreUntil = "2026-08-11T00:00:00Z"
+
+[[IgnoredVulns]]
+id = "GHSA-h7mw-gpvr-xq4m"  # dompurify
+reason = "Dev-only — via @redocly/cli. Not in shipped bundle."
+ignoreUntil = "2026-08-11T00:00:00Z"
+
+[[IgnoredVulns]]
+id = "GHSA-v9jr-rg53-9pgp"  # dompurify
+reason = "Dev-only — via @redocly/cli. Not in shipped bundle."
+ignoreUntil = "2026-08-11T00:00:00Z"
+
+[[IgnoredVulns]]
+id = "GHSA-5wm8-gmm8-39j9"  # fast-xml-builder
+reason = "Dev-only — via @redocly/cli. Not in shipped bundle."
+ignoreUntil = "2026-08-11T00:00:00Z"
+
+[[IgnoredVulns]]
+id = "GHSA-gh4j-gqv2-49f6"  # fast-xml-parser
+reason = "Dev-only — via @redocly/cli. Not in shipped bundle."
+ignoreUntil = "2026-08-11T00:00:00Z"

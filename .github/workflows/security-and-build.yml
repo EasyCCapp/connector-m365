@@ -18,34 +18,27 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Stage 1 — Dependency CVEs (OSV.dev, production deps only).
+  # Stage 1 — Dependency CVEs (OSV.dev).
   #
-  # We install with --omit=dev so node_modules contains only what ships,
-  # then scan that. OSV-Scanner scanning a lockfile sees every entry
-  # without prod/dev split, which gives false positives for build-time
-  # dependencies that never reach users.
-  #
-  # Additional ignores in .osv-scanner.toml are for advisories in the
-  # production tree that are contextually mitigated by our launch env
-  # (stdio-only, no hono).
+  # OSV-Scanner doesn't natively split prod/dev on lockfile scans, so
+  # build-time deps surface as findings. We allowlist those explicitly
+  # in .osv-scanner.toml with "Dev-only" rationale + sunset dates. The
+  # adjacent `npm-audit-prod` job (audit-ci) gates strictly on prod
+  # deps — OSV adds breadth (multiple data sources) but the prod
+  # gating is owned by audit-ci.
   osv-scan:
-    name: OSV — Dependency vulnerabilities (production only)
+    name: OSV — Dependency vulnerabilities
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-      - name: Install production-only deps
-        run: npm ci --omit=dev
       - name: Install osv-scanner
         run: |
           curl -fsSL https://github.com/google/osv-scanner/releases/latest/download/osv-scanner_linux_amd64 -o /usr/local/bin/osv-scanner
           chmod +x /usr/local/bin/osv-scanner
-      - name: Scan installed production-only node_modules
-        run: osv-scanner --config=.osv-scanner.toml --recursive node_modules
+      - name: Scan package-lock.json
+        run: osv-scanner --config=.osv-scanner.toml --lockfile=package-lock.json .
 
   # Stage 1 — npm audit, production-only deps.
   # audit-ci with declarative ignores keeps the gate honest while
