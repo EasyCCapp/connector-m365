@@ -50,3 +50,31 @@ ignoreUntil = "2026-07-11T00:00:00Z"  # short sunset — wants verification
 id = "GHSA-v39h-62p7-jpjc"  # fast-uri host confusion
 reason = "Same as above. Manual reviewer to re-verify."
 ignoreUntil = "2026-07-11T00:00:00Z"
+
+# -----------------------------------------------------------------
+# Dev-dependency-only advisories — surfaced by OSV-Scanner because it
+# doesn't natively split prod/dev. These deps are NOT in the shipped
+# bundle (build.ps1 runs `npm prune --production` before zipping).
+# audit-ci handles this correctly via `--omit=dev`; OSV needs explicit
+# allowlist. Sunset matches upstream's expected fix timeline.
+# -----------------------------------------------------------------
+
+[[IgnoredVulns]]
+id = "GHSA-xq3m-2v4x-88gg"  # protobufjs arbitrary code execution (CRITICAL)
+reason = "Dev-only — via @redocly/cli → @opentelemetry/exporter-trace-otlp-http → @opentelemetry/otlp-transformer. Used at Softeria's build time for OpenAPI tooling. Not in the shipped bundle (npm prune --production drops it before zip). Verified via `npm audit --omit=dev` showing 0 critical."
+ignoreUntil = "2026-08-11T00:00:00Z"
+
+[[IgnoredVulns]]
+id = "GHSA-c2c7-rcm5-vvqj"  # picomatch ReDoS
+reason = "Dev-only — via tsup (TypeScript bundler). Not in shipped bundle."
+ignoreUntil = "2026-08-11T00:00:00Z"
+
+[[IgnoredVulns]]
+id = "GHSA-3v7f-55p6-f55p"  # picomatch DoS
+reason = "Dev-only — via tsup. Not in shipped bundle."
+ignoreUntil = "2026-08-11T00:00:00Z"
+
+[[IgnoredVulns]]
+id = "GHSA-qx2v-qp2m-jg93"  # postcss
+reason = "Dev-only — via build tooling. Not in shipped bundle."
+ignoreUntil = "2026-08-11T00:00:00Z"
