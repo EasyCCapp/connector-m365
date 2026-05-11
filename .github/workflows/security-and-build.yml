@@ -30,14 +30,15 @@ jobs:
         run: |
           curl -fsSL https://github.com/google/osv-scanner/releases/latest/download/osv-scanner_linux_amd64 -o /usr/local/bin/osv-scanner
           chmod +x /usr/local/bin/osv-scanner
-      - name: Scan package-lock.json (production deps)
-        # OSV-Scanner doesn't natively split prod/dev. We accept that for
-        # the catalog gate and use the manual review tier (Endor via local
-        # MCP) for the prod-only deep dive. The blanket OSV view still
-        # catches things missing from manual review.
-        run: osv-scanner --lockfile=package-lock.json .
+      - name: Scan package-lock.json
+        # .osv-scanner.toml at the fork root declares allowlisted CVE IDs
+        # for advisories that are real but contextually mitigated (each
+        # has a justification + sunset).
+        run: osv-scanner --config=.osv-scanner.toml --lockfile=package-lock.json .
 
-  # Stage 1 — npm audit (production-only deps)
+  # Stage 1 — npm audit, production-only deps.
+  # audit-ci with declarative ignores keeps the gate honest while
+  # surfacing mitigated advisories explicitly.
   npm-audit-prod:
     name: npm audit — production dependencies only
     runs-on: ubuntu-latest
@@ -48,7 +49,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - run: npm audit --audit-level=high --omit=dev
+      - run: npx --yes audit-ci@7 --high --pass-enoaudit --config audit-ci.jsonc
 
   # Stage 2 — JS/TS SAST via semgrep (no account, OSS rules)
   semgrep:
@@ -173,12 +174,16 @@ jobs:
         # build pipeline) contains a single U+200B that's not in
         # human-authored Softeria code. Exclude the openapi/ dir from the
         # gate; it's regenerated at build time, not part of the tool surface.
+        # --allow-codepoint=U+FE0F skips emoji presentation marker (legit
+        # use in README/console-log emoji), narrows the gate to actually
+        # suspicious codepoints (zero-width, tag chars, BiDi).
         run: |
           python carpe-fork/tools/unicode-norm/scan.py \
             --path=. \
             --exclude-dir=node_modules \
             --exclude-dir=dist \
             --exclude-dir=openapi \
+            --allow-codepoint=U+FE0F \
             --fail-on-finding
 
   # Stage 4 — Tool-surface snapshot (rug-pull mitigation)

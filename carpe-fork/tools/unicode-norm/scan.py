@@ -54,21 +54,28 @@ DEFAULT_EXCLUDE_DIRS: frozenset[str] = frozenset({
 })
 
 
-def classify_codepoint(cp: int) -> str | None:
-    """Return a reason string if the codepoint is forbidden, else None."""
+def classify_codepoint(cp: int, allowed: set[int]) -> str | None:
+    """Return a reason string if the codepoint is forbidden, else None.
+
+    `allowed` is a set of codepoints to explicitly skip (e.g. {0xFE0F} for
+    emoji VS-16, which is legitimately used in README emoji and not a
+    plausible hidden-instruction carrier on its own).
+    """
+    if cp in allowed:
+        return None
     for lo, hi, reason in FORBIDDEN_RANGES:
         if lo <= cp <= hi:
             return reason
     return None
 
 
-def scan_text(text: str) -> list[dict]:
+def scan_text(text: str, allowed: set[int]) -> list[dict]:
     """Walk a string and report every forbidden codepoint with context."""
     findings: list[dict] = []
     line = 1
     col = 1
     for i, ch in enumerate(text):
-        reason = classify_codepoint(ord(ch))
+        reason = classify_codepoint(ord(ch), allowed)
         if reason:
             findings.append({
                 "offset": i,
@@ -85,7 +92,7 @@ def scan_text(text: str) -> list[dict]:
     return findings
 
 
-def scan_file(path: Path) -> tuple[list[dict], str | None]:
+def scan_file(path: Path, allowed: set[int]) -> tuple[list[dict], str | None]:
     """Return (findings, error). Either findings is a list or error is set."""
     try:
         text = path.read_text(encoding="utf-8")
@@ -93,7 +100,7 @@ def scan_file(path: Path) -> tuple[list[dict], str | None]:
         return [], f"non-UTF-8 file: {exc.reason}"
     except OSError as exc:
         return [], f"unreadable: {exc}"
-    return scan_text(text), None
+    return scan_text(text, allowed), None
 
 
 def walk(root: Path, exclude_dirs: frozenset[str], exts: frozenset[str]) -> Iterator[Path]:
@@ -112,13 +119,14 @@ def build_report(
     root: Path,
     exclude_dirs: frozenset[str],
     exts: frozenset[str],
+    allowed: set[int],
 ) -> dict:
     file_reports: list[dict] = []
     error_reports: list[dict] = []
     scanned = 0
     for f in walk(root, exclude_dirs, exts):
         scanned += 1
-        findings, err = scan_file(f)
+        findings, err = scan_file(f, allowed)
         rel = str(f.relative_to(root)) if f.is_relative_to(root) else str(f)
         if err is not None:
             error_reports.append({"file": rel, "error": err})
@@ -165,6 +173,12 @@ def main() -> int:
         "--extension", action="append", default=[],
         help="Additional file extension to scan, e.g. .vue (repeatable)",
     )
+    parser.add_argument(
+        "--allow-codepoint", action="append", default=[],
+        help="Codepoint to skip (e.g. U+FE0F for emoji presentation). "
+             "Format: U+XXXX. Repeatable. Use sparingly — every entry "
+             "narrows the security gate.",
+    )
     args = parser.parse_args()
 
     root = args.path.resolve()
@@ -178,7 +192,23 @@ def main() -> int:
     exclude_dirs = DEFAULT_EXCLUDE_DIRS | set(args.exclude_dir)
     exts = DEFAULT_SCAN_EXTS | {e if e.startswith(".") else "." + e for e in args.extension}
 
-    report = build_report(root, frozenset(exclude_dirs), frozenset(exts))
+    # Parse --allow-codepoint values (format: U+XXXX or 0xXXXX)
+    allowed: set[int] = set()
+    for cp in args.allow_codepoint:
+        s = cp.strip().lower()
+        if s.startswith("u+"):
+            s = s[2:]
+        elif s.startswith("0x"):
+            s = s[2:]
+        try:
+            allowed.add(int(s, 16))
+        except ValueError:
+            print(f"--allow-codepoint expects hex (e.g. U+FE0F); got {cp!r}", file=sys.stderr)
+            return 2
+
+    report = build_report(root, frozenset(exclude_dirs), frozenset(exts), allowed)
+    if allowed:
+        report["allowed_codepoints"] = sorted(f"U+{cp:04X}" for cp in allowed)
     out = json.dumps(report, indent=2, ensure_ascii=False)
     print(out)
     if args.output:

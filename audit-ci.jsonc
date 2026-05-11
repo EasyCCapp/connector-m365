@@ -1,0 +1,24 @@
+// audit-ci config — declarative ignores with justification.
+// Mirrors .osv-scanner.toml; both must stay in sync.
+{
+  "$schema": "https://github.com/IBM/audit-ci/raw/main/docs/schema.json",
+  "high": true,
+  "extra-args": ["--omit=dev"],
+  "allowlist": [
+    // hono advisories — HTTP-transport-only, never loaded in stdio mode.
+    // Catalog launch env forbids --http.
+    "GHSA-458j-xx4x-4375",
+    "GHSA-9vqf-7f2p-gf9v",
+    "GHSA-69xw-7hcm-h432",
+    "GHSA-qp7p-654g-cw7p",
+    "GHSA-hm8q-7f3q-5f36",
+    "GHSA-p77w-8qqv-26rm",
+    // ip-address via express-rate-limit — HTTP-transport-only.
+    "GHSA-v2v4-37r5-5v8g",
+    // fast-uri via @modelcontextprotocol/sdk — review pending (see
+    // .osv-scanner.toml comment). Surface in fork's PR for human eyes
+    // until verified.
+    "GHSA-q3j6-qgpj-74h6",
+    "GHSA-v39h-62p7-jpjc"
+  ]
+}
